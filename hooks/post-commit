@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+SYNC_DIR="$REPO_ROOT/.obsidian-sync"
+
+VAULTS=(
+  "AIM @ SCU"
+  "Personal"
+  "Pro"
+  "SCU Coursework & Notes"
+  "Social Media"
+  "Work"
+)
+
+# Vault-specific files — never overwrite these on the destination
+RSYNC_EXCLUDES=(
+  --exclude=workspace.json
+  --exclude=workspace-mobile.json
+  --exclude=graph.json
+  --exclude=.DS_Store
+  --exclude="plugins/*/data.json"
+)
+
+CHANGED=$(git diff-tree --no-commit-id -r --name-only HEAD 2>/dev/null || true)
+[ -z "$CHANGED" ] && exit 0
+
+# Check what changed
+# Note: submodule pointer change looks like a single line ".obsidian-sync" (no trailing slash)
+SYNC_CHANGED=false
+SOURCE_VAULT=""
+
+if echo "$CHANGED" | grep -qE "^\.obsidian-sync($|/)"; then
+  SYNC_CHANGED=true
+fi
+
+if [ "$SYNC_CHANGED" = false ]; then
+  for vault in "${VAULTS[@]}"; do
+    if echo "$CHANGED" | grep -qF "${vault}/.obsidian/"; then
+      SOURCE_VAULT="$vault"
+      break
+    fi
+  done
+fi
+
+[ "$SYNC_CHANGED" = false ] && [ -z "$SOURCE_VAULT" ] && exit 0
+
+echo "[obsidian-sync] Config change detected..."
+
+# A vault changed — promote it to .obsidian-sync (submodule) and push
+if [ -n "$SOURCE_VAULT" ]; then
+  rsync -a --delete "${RSYNC_EXCLUDES[@]}" "$REPO_ROOT/$SOURCE_VAULT/.obsidian/" "$SYNC_DIR/"
+  echo "[obsidian-sync] Updated .obsidian-sync from '$SOURCE_VAULT'"
+
+  # Commit and push inside the submodule
+  if git -C "$SYNC_DIR" diff --quiet && git -C "$SYNC_DIR" diff --cached --quiet; then
+    echo "[obsidian-sync] No submodule changes to commit."
+  else
+    git -C "$SYNC_DIR" add -A
+    git -C "$SYNC_DIR" commit -m "sync: ${SOURCE_VAULT}"
+    git -C "$SYNC_DIR" push
+    echo "[obsidian-sync] Pushed to github.com/ulises-c/obsidian-config"
+  fi
+fi
+
+# If submodule pointer updated from remote, pull latest into submodule
+if [ "$SYNC_CHANGED" = true ] && [ -z "$SOURCE_VAULT" ]; then
+  git -C "$SYNC_DIR" pull --ff-only 2>/dev/null || true
+fi
+
+# Distribute .obsidian-sync → all other vaults
+for vault in "${VAULTS[@]}"; do
+  [ "$vault" = "$SOURCE_VAULT" ] && continue
+  target="$REPO_ROOT/$vault/.obsidian"
+  mkdir -p "$target"
+  rsync -a --delete "${RSYNC_EXCLUDES[@]}" "$SYNC_DIR/" "$target/"
+  echo "[obsidian-sync]   → $vault"
+done
+
+# Stage propagated changes so next backup commit picks them up
+git add -- ".obsidian-sync" 2>/dev/null || true  # submodule pointer
+for vault in "${VAULTS[@]}"; do
+  git add -- "$vault/.obsidian/" 2>/dev/null || true
+done
+
+echo "[obsidian-sync] Done — staged for next commit."

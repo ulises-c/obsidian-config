@@ -23,6 +23,7 @@ RSYNC_EXCLUDES=(
   --exclude=hooks/
   --exclude=.git
   --exclude=README.md
+  --exclude=.gitignore
 )
 
 CHANGED=$(git diff-tree --no-commit-id -r --name-only HEAD 2>/dev/null || true)

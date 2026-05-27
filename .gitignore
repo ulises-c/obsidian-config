@@ -1,6 +1,9 @@
 # macOS
 .DS_Store
 
+# Railguard traces
+.railguard/
+
 # Vault-specific plugin data — never belongs in shared config
 plugins/*/data.json
 

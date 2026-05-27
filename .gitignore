@@ -1,0 +1,10 @@
+# macOS
+.DS_Store
+
+# Vault-specific plugin data — never belongs in shared config
+plugins/*/data.json
+
+# Vault-specific state files — should not end up here but guard against it
+workspace.json
+workspace-mobile.json
+graph.json

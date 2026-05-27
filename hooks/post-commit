@@ -4,14 +4,15 @@ set -euo pipefail
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 SYNC_DIR="$REPO_ROOT/.obsidian-config"
 
+# Empty string = monorepo root vault (.obsidian/ at repo root)
 VAULTS=(
+  ""
   "Personal"
   "Pro"
   "School"
   "Work"
 )
 
-# Vault-specific files and repo internals — never overwrite these on the destination
 RSYNC_EXCLUDES=(
   --exclude=workspace.json
   --exclude=workspace-mobile.json
@@ -27,9 +28,8 @@ RSYNC_EXCLUDES=(
 CHANGED=$(git diff-tree --no-commit-id -r --name-only HEAD 2>/dev/null || true)
 [ -z "$CHANGED" ] && exit 0
 
-# Check what changed
-# Note: submodule pointer change looks like a single line ".obsidian-sync" (no trailing slash)
 SYNC_CHANGED=false
+FOUND_SOURCE=false
 SOURCE_VAULT=""
 
 if echo "$CHANGED" | grep -qE "^\.obsidian-config($|/)"; then
@@ -38,54 +38,69 @@ fi
 
 if [ "$SYNC_CHANGED" = false ]; then
   for vault in "${VAULTS[@]}"; do
-    if echo "$CHANGED" | grep -qF "${vault}/.obsidian/"; then
+    if [[ -z "$vault" ]]; then
+      pattern="^\.obsidian/"
+    else
+      pattern="^${vault}/.obsidian/"
+    fi
+    if echo "$CHANGED" | grep -qE "$pattern"; then
       SOURCE_VAULT="$vault"
+      FOUND_SOURCE=true
       break
     fi
   done
 fi
 
-[ "$SYNC_CHANGED" = false ] && [ -z "$SOURCE_VAULT" ] && exit 0
+[ "$SYNC_CHANGED" = false ] && [ "$FOUND_SOURCE" = false ] && exit 0
 
 echo "[obsidian-sync] Config change detected..."
 
-# Unset git environment variables inherited from the parent git process so that
-# git -C "$SYNC_DIR" resolves the submodule's .git gitdir file correctly.
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY
 
-# A vault changed — promote it to .obsidian-sync (submodule) and push
-if [ -n "$SOURCE_VAULT" ]; then
-  rsync -a --delete "${RSYNC_EXCLUDES[@]}" "$REPO_ROOT/$SOURCE_VAULT/.obsidian/" "$SYNC_DIR/"
-  echo "[obsidian-sync] Updated .obsidian-sync from '$SOURCE_VAULT'"
+if [ "$FOUND_SOURCE" = true ]; then
+  if [[ -z "$SOURCE_VAULT" ]]; then
+    rsync_src="$REPO_ROOT/.obsidian/"
+    label="(root)"
+  else
+    rsync_src="$REPO_ROOT/$SOURCE_VAULT/.obsidian/"
+    label="$SOURCE_VAULT"
+  fi
+  rsync -a --delete "${RSYNC_EXCLUDES[@]}" "$rsync_src" "$SYNC_DIR/"
+  echo "[obsidian-sync] Updated .obsidian-config from '$label'"
 
-  # Commit and push inside the submodule
   if git -C "$SYNC_DIR" diff --quiet && git -C "$SYNC_DIR" diff --cached --quiet; then
     echo "[obsidian-sync] No submodule changes to commit."
   else
     git -C "$SYNC_DIR" add -A
-    git -C "$SYNC_DIR" commit -m "sync: ${SOURCE_VAULT}"
+    git -C "$SYNC_DIR" commit -m "sync: ${label}"
     git -C "$SYNC_DIR" push
     echo "[obsidian-sync] Pushed to github.com/ulises-c/obsidian-config"
   fi
 fi
 
-# If submodule pointer updated from remote, pull latest into submodule
-if [ "$SYNC_CHANGED" = true ] && [ -z "$SOURCE_VAULT" ]; then
+if [ "$SYNC_CHANGED" = true ] && [ "$FOUND_SOURCE" = false ]; then
   git -C "$SYNC_DIR" pull --ff-only 2>/dev/null || true
 fi
 
-# Distribute .obsidian-sync → all other vaults
 for vault in "${VAULTS[@]}"; do
-  [ "$vault" = "$SOURCE_VAULT" ] && continue
-  target="$REPO_ROOT/$vault/.obsidian"
+  if [[ -z "$vault" ]]; then
+    [ "$SOURCE_VAULT" = "$vault" ] && [ "$FOUND_SOURCE" = true ] && continue
+    target="$REPO_ROOT/.obsidian"
+    label="(root)"
+  else
+    [ "$vault" = "$SOURCE_VAULT" ] && continue
+    target="$REPO_ROOT/$vault/.obsidian"
+    label="$vault"
+  fi
   mkdir -p "$target"
   rsync -a --delete "${RSYNC_EXCLUDES[@]}" "$SYNC_DIR/" "$target/"
-  echo "[obsidian-sync]   → $vault"
+  echo "[obsidian-sync]   → $label"
 done
 
-# Stage propagated changes so next backup commit picks them up
-git add -- ".obsidian-config" 2>/dev/null || true  # submodule pointer
+git add -- ".obsidian-config" 2>/dev/null || true
+git add -- ".obsidian/" 2>/dev/null || true
 for vault in "${VAULTS[@]}"; do
+  [[ -z "$vault" ]] && continue
   git add -- "$vault/.obsidian/" 2>/dev/null || true
 done
 

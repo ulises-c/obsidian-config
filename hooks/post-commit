@@ -13,13 +13,16 @@ VAULTS=(
   "Work"
 )
 
-# Vault-specific files — never overwrite these on the destination
+# Vault-specific files and repo internals — never overwrite these on the destination
 RSYNC_EXCLUDES=(
   --exclude=workspace.json
   --exclude=workspace-mobile.json
   --exclude=graph.json
   --exclude=.DS_Store
   --exclude="plugins/*/data.json"
+  --exclude=hooks/
+  --exclude=.git
+  --exclude=README.md
 )
 
 CHANGED=$(git diff-tree --no-commit-id -r --name-only HEAD 2>/dev/null || true)
@@ -46,6 +49,10 @@ fi
 [ "$SYNC_CHANGED" = false ] && [ -z "$SOURCE_VAULT" ] && exit 0
 
 echo "[obsidian-sync] Config change detected..."
+
+# Unset git environment variables inherited from the parent git process so that
+# git -C "$SYNC_DIR" resolves the submodule's .git gitdir file correctly.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY
 
 # A vault changed — promote it to .obsidian-sync (submodule) and push
 if [ -n "$SOURCE_VAULT" ]; then

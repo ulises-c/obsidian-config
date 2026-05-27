@@ -2,14 +2,12 @@
 set -euo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
-SYNC_DIR="$REPO_ROOT/.obsidian-sync"
+SYNC_DIR="$REPO_ROOT/.obsidian-config"
 
 VAULTS=(
-  "AIM @ SCU"
   "Personal"
   "Pro"
-  "SCU Coursework & Notes"
-  "Social Media"
+  "School"
   "Work"
 )
 
@@ -34,7 +32,7 @@ CHANGED=$(git diff-tree --no-commit-id -r --name-only HEAD 2>/dev/null || true)
 SYNC_CHANGED=false
 SOURCE_VAULT=""
 
-if echo "$CHANGED" | grep -qE "^\.obsidian-sync($|/)"; then
+if echo "$CHANGED" | grep -qE "^\.obsidian-config($|/)"; then
   SYNC_CHANGED=true
 fi
 
@@ -86,7 +84,7 @@ for vault in "${VAULTS[@]}"; do
 done
 
 # Stage propagated changes so next backup commit picks them up
-git add -- ".obsidian-sync" 2>/dev/null || true  # submodule pointer
+git add -- ".obsidian-config" 2>/dev/null || true  # submodule pointer
 for vault in "${VAULTS[@]}"; do
   git add -- "$vault/.obsidian/" 2>/dev/null || true
 done

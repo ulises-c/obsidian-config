@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+SYNC_DIR="$REPO_ROOT/.obsidian-sync"
+
+# Skip if submodule isn't initialized
+[ -e "$SYNC_DIR/.git" ] || exit 0
+
+AHEAD=$(git -C "$SYNC_DIR" rev-list --count "@{u}..HEAD" 2>/dev/null || echo 0)
+if [ "$AHEAD" -gt 0 ]; then
+  echo "[obsidian-sync] Pushing submodule ($AHEAD commit(s) ahead)..."
+  git -C "$SYNC_DIR" push || {
+    echo "[obsidian-sync] Submodule push failed — aborting."
+    exit 1
+  }
+fi

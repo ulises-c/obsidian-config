@@ -4,14 +4,16 @@ set -euo pipefail
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 SYNC_DIR="$REPO_ROOT/.obsidian-config"
 
-# Empty string = monorepo root vault (.obsidian/ at repo root)
-VAULTS=(
-  ""
-  "Personal"
-  "Pro"
-  "School"
-  "Work"
-)
+# Vault names are read from $REPO_ROOT/.obsidian-vaults (one per line).
+# Root vault (.obsidian/ at repo root) is always included implicitly.
+VAULTS=("")
+VAULTS_FILE="$REPO_ROOT/.obsidian-vaults"
+if [[ -f "$VAULTS_FILE" ]]; then
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ -z "$line" || "$line" == \#* ]] && continue
+    VAULTS+=("$line")
+  done < "$VAULTS_FILE"
+fi
 
 RSYNC_EXCLUDES=(
   --exclude=workspace.json
@@ -23,6 +25,7 @@ RSYNC_EXCLUDES=(
   --exclude=.git
   --exclude=README.md
   --exclude=.gitignore
+  --exclude=.obsidian-vaults
 )
 
 CHANGED=$(git diff-tree --no-commit-id -r --name-only HEAD 2>/dev/null || true)

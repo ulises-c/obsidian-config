@@ -7,5 +7,7 @@
   "obsidian-linter",
   "obsidian-importer",
   "table-editor-obsidian",
-  "homepage"
+  "homepage",
+  "advanced-pdf-export",
+  "pdf-page-numbers"
 ]

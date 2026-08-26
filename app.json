@@ -8,5 +8,6 @@
   },
   "showLineNumber": true,
   "strictLineBreaks": false,
-  "readableLineLength": false
+  "readableLineLength": false,
+  "showUnsupportedFiles": true
 }
